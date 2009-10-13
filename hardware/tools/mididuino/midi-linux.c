@@ -285,22 +285,18 @@ void midiInitialize(char *inputDevice, char *outputDevice) {
 
 unsigned char inbuf[256];
 void midiMainLoop(void) {
-  int timeout_us_default = 10*10*1000*1000; // 10 seconds in micro seconds
-  int timeout_us = timeout_us_default; // 10 seconds in micro seconds
+  int timeout_us = 10*1000*1000; // 10 seconds in micro seconds
   int timer_resolution_us = 50; // 50 micro seconds
 
   while (!exitMainLoop) {
     int len;
     len = snd_rawmidi_read(handle_in, inbuf, 256);
     if (len > 0) {
-      // reset timeout 
-      timeout_us = timeout_us_default;
-      //hexdump(inbuf, len);
+      //      hexdump(inbuf, len);
       int i = 0;
       for (i = 0; i < len; i++)
 	midiReceive(inbuf[i]);
     }
-
     if (len == -EAGAIN) {
       //      printf("usleep\n");
       usleep(timer_resolution_us);

@@ -10,42 +10,24 @@ typedef enum {
   LFO_RANDOM
 } lfo_type_t;
 
-class LFO {
- protected:
+class LFOClass {
   uint8_t oldacc;
+  uint8_t oldval;
+
  public:
-  LFO();
+  LFOClass();
 
   lfo_type_t type;
   
-  uint16_t acc;
+  uint32_t acc;
   uint32_t inc;
 
   uint8_t curValue;
   uint8_t oldValue;
-  uint8_t amount;
   
   uint8_t getValue();
-  uint8_t getScaledValue() {
-    int val = getValue();
-    return (val * (int)amount) >> 8;
-  }
-
-  void setSpeed(uint16_t _inc) { inc = _inc; }
-  void tick() {
-    acc += inc;
-  }
-  void update() {
-    oldacc = acc;
-  }
-  
-
-  bool hasChanged() {
-    if (oldacc != acc) {
-      return true;
-    }
-  }
-
 };
+
+extern LFOClass LFO[4];
 
 #endif /* LFO_H__ */

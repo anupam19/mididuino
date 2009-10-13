@@ -11,10 +11,9 @@ void MidiSysexClass::reset() {
   recvIds[0] = 0;
   recvIds[1] = 0;
   recvIds[2] = 0;
-  startRecord();
 }
 
-void MidiSysexClass::resetRecord(uint8_t *buf, uint16_t maxLen) {
+void MidiSysexClass::startRecord(uint8_t *buf, uint16_t maxLen) {
   if (buf == NULL) {
     recordBuf = data;
     maxRecordLen = max_len;
@@ -22,13 +21,8 @@ void MidiSysexClass::resetRecord(uint8_t *buf, uint16_t maxLen) {
     recordBuf = buf;
     maxRecordLen = maxLen;
   }
-  recording = false;
-  recordLen = 0;
-}
-
-void MidiSysexClass::startRecord(uint8_t *buf, uint16_t maxLen) {
-  resetRecord(buf, maxLen);
   recording = true;
+  recordLen = 0;
 }
 
 void MidiSysexClass::stopRecord() {
@@ -38,9 +32,6 @@ void MidiSysexClass::stopRecord() {
 bool MidiSysexClass::isListenerActive(MidiSysexListenerClass *listener) {
   if (listener == NULL)
     return false;
-  /* catch all */
-  if (listener->ids[0] == 0xFF)
-    return true;
   if (sysexLongId) {
     if (recvIds[0] == listener->ids[0] &&
 	recvIds[1] == listener->ids[1] &&
@@ -113,25 +104,17 @@ void MidiSysexClass::handleByte(uint8_t byte) {
 
   len++;
 
-  if (recording) {
-    recordByte(byte);
+  if (recording && recordBuf != NULL) {
+    if (recordLen < maxRecordLen) {
+      recordBuf[recordLen++] = byte;
+    }
   }
-}
 
-bool MidiSysexClass::recordByte(uint8_t c) {
-  if (recordLen < maxRecordLen && recordBuf != NULL) {
-    recordBuf[recordLen++] = c;
-    return true;
-  } else {
-    return false;
-  }
 }
 
 static uint8_t sysexBuf[SYSEX_BUF_SIZE];
-static uint8_t sysexBuf2[SYSEX_BUF_SIZE];
 
 MidiSysexClass MidiSysex(sysexBuf, sizeof(sysexBuf));
-MidiSysexClass MidiSysex2(sysexBuf2, sizeof(sysexBuf2));
 
 MididuinoSysexListenerClass::MididuinoSysexListenerClass() {
   ids[0] = MIDIDUINO_SYSEX_VENDOR_1;

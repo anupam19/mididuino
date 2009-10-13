@@ -1,74 +1,12 @@
 #include "Encoders.hh"
-#include "MidiTools.h"
+
 #include "Midi.h"
 
-#include "GUI.h"
-
-/* handlers */
-
-void CCEncoderHandle(Encoder *enc) {
-  CCEncoder *ccEnc = (CCEncoder *)enc;
-  MidiUart.sendCC(ccEnc->getChannel(), ccEnc->getCC(), ccEnc->getValue());
-}
-
-void VarRangeEncoderHandle(Encoder *enc) {
-  VarRangeEncoder *rEnc = (VarRangeEncoder *)enc;
-  if (rEnc->var != NULL) {
-    *(rEnc->var) = rEnc->getValue();
-  }
-}
-
-#ifndef HOST_MIDIDUINO
-#include <MidiClock.h>
-
-void TempoEncoderHandle(Encoder *enc) {
-  MidiClock.setTempo(enc->getValue());
-}
-#endif
-
-/* Encoder */
-Encoder::Encoder(const char *_name, encoder_handle_t _handler) {
+Encoder::Encoder(char *_name) {
   old = 0;
   cur = 0;
   redisplay = false;
   setName(_name);
-  handler = _handler;
-  fastmode = true;
-  pressmode = false;
-}
-
-void Encoder::checkHandle() {
-  if (cur != old) {
-    if (handler != NULL)
-      handler(this);
-  }
-  
-  old = cur;
-}
-
-void Encoder::setName(const char *_name) {
-  if (_name != NULL)
-    m_strncpy_fill(name, _name, 4);
-  name[3] = '\0';
-}
-
-void Encoder::setValue(int value, bool handle) {
-  if (handle) {
-    cur = value;
-    checkHandle();
-  } else {
-    old = cur = value;
-  }
-  redisplay = true;
-}
-
-void Encoder::displayAt(int i) {
-  GUI.put_value(i, getValue());
-  redisplay = false;
-}
-
-bool Encoder::hasChanged() {
-  return old != cur;
 }
 
 void Encoder::clear() {
@@ -76,34 +14,28 @@ void Encoder::clear() {
   cur = 0;
 }
 
-int Encoder::update(encoder_t *enc) {
-  cur = cur + enc->normal + (pressmode ? 0 : (fastmode ? 5 * enc->button : enc->button));
-  return cur;
+void Encoder::handle(int val) {
 }
 
-/* EnumEncoder */
-void EnumEncoder::displayAt(int i) {
-  GUI.put_string_at(i * 4, enumStrings[getValue()]);
-  redisplay = false;
+void Encoder::update(encoder_t *enc) {
+  cur = cur + enc->normal + 5 * enc->button;
 }
 
-void PEnumEncoder::displayAt(int i) {
-  //  GUI.put_p_string_at_fill(i * 4, (PGM_P)(pgm_read_word(enumStrings[getValue()])));
-  GUI.put_p_string_at(i * 4, (PGM_P)(enumStrings[getValue()]));
-  redisplay = false;
-}
-
-
-/* RangeEncoder */
-
-int RangeEncoder::update(encoder_t *enc) {
-  int inc = enc->normal + (pressmode ? 0 : (fastmode ? 5 * enc->button : enc->button));
+void RangeEncoder::update(encoder_t *enc) {
+  int inc = enc->normal + 5 * enc->button;
   
   cur = limit_value(cur, inc, min, max);
-  return cur;
 }
 
-/* CharEncoder */
+void CCEncoder::handle(int val) {
+  MidiUart.sendCC(channel, cc, val);
+}
+
+void TempoEncoder::handle(int val) {
+  MidiClock.setTempo(val);
+}
+
+
 CharEncoder::CharEncoder()  : RangeEncoder(0, 37) {
 }
 
@@ -127,25 +59,3 @@ void CharEncoder::setChar(char c) {
     setValue(0);
   }
 }
-
-/* notePitchEncoder */
-NotePitchEncoder::NotePitchEncoder(char *_name) : RangeEncoder(0, 127, _name) {
-}
-
-void NotePitchEncoder::displayAt(int i) {
-  char name[5];
-  getNotePitch(getValue(), name);
-  GUI.put_string_at(i * 4, name);
-}
-
-void MidiTrackEncoder::displayAt(int i) {
-  GUI.put_value(i, getValue() + 1);
-}
-
-void AutoNameCCEncoder::initCCEncoder(uint8_t _channel, uint8_t _cc) {
-  CCEncoder::initCCEncoder(_channel, _cc);
-  setCCName();
-  GUI.redisplay();
-
-}
-

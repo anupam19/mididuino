@@ -1,46 +1,36 @@
 #ifndef RINGBUFFER_H__
 #define RINGBUFFER_H__
 
-#include "WProgram.h"
 #include <inttypes.h>
+#include <avr/interrupt.h>
 
-template <class C, int N, class T = uint8_t>
-class CRingBuffer {
-  volatile T rd, wr;
-  volatile C buf[N];
+template <int N>
+class RingBuffer {
+  volatile uint8_t rd, wr;
+  volatile uint8_t buf[N];
   
  public:
   volatile uint8_t overflow;
 
-  CRingBuffer();
-  bool put(C c) volatile;
-  bool putp(C *c) volatile;
-  C get() volatile;
-  bool getp(C *dst) volatile;
-  C peek() volatile;
+  RingBuffer();
+  bool put(uint8_t c) volatile;
+  uint8_t get() volatile;
+  uint8_t peek() volatile;
   bool isEmpty() volatile;
   bool isFull() volatile;
 };
 
-template <int N, class T = uint8_t>
-  class RingBuffer : public CRingBuffer<uint8_t, N, T> {
- public:
-  
-  RingBuffer() {
-  };
-};
+#define RB_INC(x) (uint8_t)(((x) + 1) % N)
 
-#define RB_INC(x) (T)(((x) + 1) % N)
-
-template <class C, int N, class T>
-  CRingBuffer<C, N, T>::CRingBuffer() {
+template <int N>
+RingBuffer<N>::RingBuffer() {
   rd = 0;
   wr = 0;
   overflow = 0;
 }
 
-template <class C, int N, class T >
-  bool CRingBuffer<C, N, T>::put(C c) volatile {
+template <int N>
+bool RingBuffer<N>::put(uint8_t c) volatile {
   if (isFull()) {
     overflow++;
     return false;
@@ -50,58 +40,37 @@ template <class C, int N, class T >
   return true;
 }
 
-template <class C, int N, class T>
-  bool CRingBuffer<C, N, T>::putp(C *c) volatile {
-  if (isFull()) {
-    overflow++;
-    return false;
-  }
-  m_memcpy((void *)&buf[wr], (void *)c, sizeof(*c));
-  wr = RB_INC(wr);
-  return true;
-}
-
-
-template <class C, int N, class T>
-  C CRingBuffer<C, N, T>::get() volatile {
+template <int N>
+uint8_t RingBuffer<N>::get() volatile {
   if (isEmpty())
     return 0;
-  C ret = buf[rd];
+  uint8_t ret = buf[rd];
   rd = RB_INC(rd);
   return ret;
 }
 
-template <class C, int N, class T>
-  bool CRingBuffer<C, N, T>::getp(C *dst) volatile {
+template <int N>
+uint8_t RingBuffer<N>::peek() volatile {
   if (isEmpty())
-    return false;
-  m_memcpy(dst, (void *)&buf[rd], sizeof(C));
-  rd = RB_INC(rd);
-  return true;
-}
-
-template <class C, int N, class T>
-  C CRingBuffer<C, N, T>::peek() volatile {
-  if (isEmpty())
-    return (C)0;
+    return 0;
   else return buf[rd];
 }
 
-template <class C, int N, class T>
-  bool CRingBuffer<C, N, T>::isEmpty() volatile {
-  USE_LOCK();
-  SET_LOCK();
-  bool ret = (rd == wr);
-  CLEAR_LOCK();
+template <int N>
+bool RingBuffer<N>::isEmpty() volatile {
+  uint8_t tmp = SREG;
+  cli();
+  uint8_t ret = (rd == wr);
+  SREG = tmp;
   return ret;
 }
 
-template <class C, int N, class T>
-  bool CRingBuffer<C, N, T>::isFull() volatile {
-  USE_LOCK();
-  SET_LOCK();
-  bool ret = (RB_INC(wr) == rd);
-  CLEAR_LOCK();
+template <int N>
+bool RingBuffer<N>::isFull() volatile {
+  uint8_t tmp = SREG;
+  cli();
+  uint8_t ret = (RB_INC(wr) == rd);
+  SREG = tmp;
   return ret;
 }
 

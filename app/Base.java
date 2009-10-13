@@ -53,8 +53,8 @@ import processing.core.*;
  * files and images, etc) that comes from that.
  */
 public class Base {
-  static final int VERSION = 14;
-  static final String VERSION_NAME = "0014 Alpha";
+  static final int VERSION = 13;
+  static final String VERSION_NAME = "0013 Alpha";
 
   /**
    * Path of filename opened on the command line,
@@ -158,13 +158,7 @@ public class Base {
     editor.show();
 
     // attempt to build libraries
-	  try {
     editor.prepareLibraries();
-	  } catch (RunnerException e) {
-//		  showError("bla", "bla", e);
-		  // e.printStacktrace(e);
-//		  error(e);
-	  }
 
     // check for updates
     if (Preferences.getBoolean("update.check")) {

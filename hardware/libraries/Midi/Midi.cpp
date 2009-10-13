@@ -1,11 +1,15 @@
-#include "WProgram.h"
-#include "helpers.h"
-
 #include "Midi.h"
-
 #include "MidiClock.h"
 
 // #include "GUI.h"
+
+#define MIDI_NOTE_OFF_CB    0
+#define MIDI_NOTE_ON_CB     1
+#define MIDI_AT_CB          2
+#define MIDI_CC_CB          3
+#define MIDI_PRG_CHG_CB     4
+#define MIDI_CHAN_PRESS_CB  5
+#define MIDI_PITCH_WHEEL_CB 6
 
 const midi_parse_t midi_parse[] = {
   { MIDI_NOTE_OFF,         midi_wait_byte_2 },
@@ -23,16 +27,13 @@ const midi_parse_t midi_parse[] = {
   { 0, midi_ignore_message}
 };
 
-MidiClass::MidiClass(MidiUartParent *_uart) {
-  midiActive = true;
+MidiClass::MidiClass(MidiUartClass *_uart) {
   uart = _uart;
   receiveChannel = 0xFF;
-  if (this == &Midi) {
-    sysex = &MidiSysex;
-  } else if (this == &Midi2) {
-    sysex = &MidiSysex2;
-  }
   init();
+  for (int i = 0; i < 7; i++) {
+    callbacks[i] = NULL;
+  }
 }
 
 void MidiClass::init() {
@@ -43,10 +44,8 @@ void MidiClass::init() {
 void MidiClass::handleByte(uint8_t byte) {
  again:
   if (MIDI_IS_REALTIME_STATUS_BYTE(byte)) {
-#ifndef HOST_MIDIDUINO
-    USE_LOCK();
-    SET_LOCK();
-    
+    uint8_t tmp = SREG;
+    cli();
     if (MidiClock.mode == MidiClock.EXTERNAL_MIDI) {
       switch (byte) {
       case MIDI_CLOCK:
@@ -54,21 +53,18 @@ void MidiClass::handleByte(uint8_t byte) {
 	break;
 	
       case MIDI_START:
-	//	MidiClock.handleMidiStart();
+	MidiClock.handleMidiStart();
 	break;
 	
       case MIDI_STOP:
-	//	MidiClock.handleMidiStop();
+	MidiClock.handleMidiStop();
 	break;
       }
     }
-    CLEAR_LOCK();
-#endif
+    SREG = tmp;
+    
     return;
   }
-
-  if (!midiActive)
-    return;
 
   switch (in_state) {
   case midi_ignore_message:
@@ -84,13 +80,13 @@ void MidiClass::handleByte(uint8_t byte) {
     if (MIDI_IS_STATUS_BYTE(byte)) {
       if (byte != MIDI_SYSEX_END) {
 	in_state = midi_wait_status;
-	sysex->abort();
+	MidiSysex.abort();
 	goto again;
       } else {
-	sysex->end();
+	MidiSysex.end();
       }
     } else {
-      sysex->handleByte(byte);
+      MidiSysex.handleByte(byte);
     }
     break;
 
@@ -98,7 +94,7 @@ void MidiClass::handleByte(uint8_t byte) {
     {
       if (byte == MIDI_SYSEX_START) {
 	in_state = midi_wait_sysex;
-	sysex->reset();
+	MidiSysex.reset();
 	last_status = running_status = 0;
 	return;
       }
@@ -139,15 +135,12 @@ void MidiClass::handleByte(uint8_t byte) {
 
   case midi_wait_byte_1:
     msg[in_msg_len++] = byte;
+    //    /* XXX check callback, note off, params, etc... */
     if (midi_parse[callback].midi_status == MIDI_NOTE_ON && msg[2] == 0) {
       callback = 0; // XXX ugly hack to recgnize NOTE on with velocity 0 as Note Off
     }
-    if (callback < 7) {
-      midiCallbacks[callback].call(msg);
-    } else if (msg[0] == MIDI_SONG_POSITION_PTR) {
-#ifndef HOST_MIDIDUINO
-      MidiClock.handleSongPositionPtr(msg);
-#endif
+    if (callback < 7 && callbacks[callback] != NULL) {
+      callbacks[callback](msg);
     }
     in_state = midi_wait_status;
     break;
@@ -158,3 +151,32 @@ void MidiClass::handleByte(uint8_t byte) {
     break;
   }
 }
+
+void MidiClass::setOnControlChangeCallback(midi_callback_t cb) {
+  callbacks[MIDI_CC_CB] = cb;
+}
+
+void MidiClass::setOnNoteOnCallback(midi_callback_t cb) {
+  callbacks[MIDI_NOTE_ON_CB] = cb;
+}
+
+void MidiClass::setOnNoteOffCallback(midi_callback_t cb) {
+  callbacks[MIDI_NOTE_OFF_CB] = cb;
+}
+
+void MidiClass::setOnAfterTouchCallback(midi_callback_t cb) {
+  callbacks[MIDI_AT_CB] = cb;
+}
+
+void MidiClass::setOnProgramChangeCallback(midi_callback_t cb) {
+  callbacks[MIDI_PRG_CHG_CB] = cb;
+}
+
+void MidiClass::setOnChannelPressureCallback(midi_callback_t cb) {
+  callbacks[MIDI_CHAN_PRESS_CB] = cb;
+}
+
+void MidiClass::setOnPitchWheelCallback(midi_callback_t cb) {
+  callbacks[MIDI_PITCH_WHEEL_CB] = cb;
+}
+

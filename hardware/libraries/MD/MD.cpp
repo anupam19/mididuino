@@ -10,38 +10,36 @@ uint8_t machinedrum_sysex_hdr[5] = {
   0x00
 };
 
-
-uint8_t MDClass::noteToTrack(uint8_t pitch) {
-  uint8_t i;
-  if (MD.loadedGlobal) {
-    for (i = 0; i < sizeof(MD.global.drumMapping); i++) {
-      if (pitch == MD.global.drumMapping[i])
-	return i;
-    }
-    return 128;
-  } else {
-    return 128;
-  }
-}
-
-uint8_t standardDrumMapping[16] = {
+uint8_t track_pitches[] = {
   36, 38, 40, 41, 43, 45, 47, 48, 50, 52, 53, 55, 57, 59, 60, 62
 };
 
-MDClass::MDClass()  {
-  currentGlobal = -1;
-  currentKit = -1;
-  currentPattern = -1;
-  global.baseChannel = 0;
-  for (int i = 0; i < 16; i++) {
-    global.drumMapping[i] = standardDrumMapping[i];
+uint8_t MDClass::noteToTrack(uint8_t pitch) {
+  uint8_t i;
+  for (i = 0; i < sizeof(track_pitches); i++) {
+    if (pitch == track_pitches[i])
+      return i;
   }
-  loadedKit = loadedGlobal = false;
+  return 128;
 }
 
+#ifdef MIDIDUINO_USE_GUI
+
+MDEncoder::MDEncoder(uint8_t _track, uint8_t _param, char *_name, uint8_t init) :
+  RangeEncoder(127, 0, _name, init) {
+  track = _track;
+  param = _param;
+}
+
+void MDEncoder::handle(uint8_t val) {
+  MD.setTrackParam(track, param, val);
+}
+
+#endif
+
 void MDClass::parseCC(uint8_t channel, uint8_t cc, uint8_t *track, uint8_t *param) {
-  if ((channel >= global.baseChannel) && (channel < (global.baseChannel + 4))) {
-    channel -= global.baseChannel;
+  if ((channel >= baseChannel) && (channel < baseChannel + 4)) {
+    channel -= baseChannel;
     *track = channel * 4;
     if (cc >= 96) {
       *track += 3;
@@ -52,14 +50,8 @@ void MDClass::parseCC(uint8_t channel, uint8_t cc, uint8_t *track, uint8_t *para
     } else if (cc >= 40) {
       *track += 1;
       *param = cc - 40;
-    } else if (cc >= 16) {
+    } else {
       *param = cc - 16;
-    } else if (cc >= 12) {
-      *track = (cc - 12);
-      *param = 32; // MUTE
-    } else if (cc >= 8) {
-      *track = (cc - 8);
-      *param = 33; // LEV
     }
   } else {
     *track = 255;
@@ -75,45 +67,30 @@ void MDClass::sendRequest(uint8_t type, uint8_t param) {
 }
 
 void MDClass::triggerTrack(uint8_t track, uint8_t velocity) {
-  if (global.drumMapping[track] != -1 && global.baseChannel != 127) {
-    MidiUart.sendNoteOn(global.baseChannel, global.drumMapping[track], velocity);
-  }
+  MidiUart.sendNoteOn(baseChannel, track_pitches[track], velocity);
 }
 
 void MDClass::setTrackParam(uint8_t track, uint8_t param, uint8_t value) {
-  if (global.baseChannel == 127)
-    return;
-
   uint8_t channel = track >> 2;
   uint8_t b = track & 3;
-  uint8_t cc = 0;
-  if (param == 32) { // MUTE
-    cc = 12 + b;
-  } else if (param == 33) { // LEV
-    cc = 8 + b;
+  uint8_t cc = param;
+  if (b < 2) {
+    cc += 16 + b * 24;
   } else {
-    cc = param;
-    if (b < 2) {
-      cc += 16 + b * 24;
-    } else {
-      cc += 24 + b * 24;
-    }
+    cc += 24 + b * 24;
   }
-  MidiUart.sendCC(channel + global.baseChannel, cc, value);
+  MidiUart.sendCC(channel + baseChannel, cc, value);
 }
 
 //  0x5E, 0x5D, 0x5F, 0x60
 
-void MDClass::sendSysex(uint8_t *bytes, uint8_t cnt) {
+void MDClass::sendFXParam(uint8_t param, uint8_t value, uint8_t type) {
   MidiUart.putc(0xF0);
   MidiUart.sendRaw(machinedrum_sysex_hdr, sizeof(machinedrum_sysex_hdr));
-  MidiUart.sendRaw(bytes, cnt);
-  MidiUart.putc(0xf7);
-}
-
-void MDClass::sendFXParam(uint8_t param, uint8_t value, uint8_t type) {
-  uint8_t data[3] = { type, param, value };
-  MD.sendSysex(data, 3);
+  uint8_t data[4] = {
+    type, param, value, 0xF7
+  };
+  MidiUart.sendRaw(data, 4);
 }
   
 void MDClass::setEchoParam(uint8_t param, uint8_t value) {
@@ -134,6 +111,94 @@ void MDClass::setCompressorParam(uint8_t param, uint8_t value) {
 
 /*** tunings ***/
 
+/* XXX convert to PGM_P */
+static const uint8_t efm_rs_tuning[] PROGMEM = {
+   1,  3, 6, 9, 11, 14, 17, 19, 22, 25, 27, 30, 33, 35, 38, 41, 43,
+  46, 49, 51, 54, 57, 59, 62, 65, 67, 70, 73, 75, 78, 81, 83, 86,
+  89, 91, 94, 97, 99, 102, 105, 107, 110, 113, 115, 118, 121, 123,
+  126
+};
+static const uint8_t efm_hh_tuning[] PROGMEM = {
+  1, 5, 9, 14, 18, 22, 27, 31, 35, 39, 44, 48, 52, 56, 61, 65, 69,
+  73, 78, 82, 86, 91, 95, 99, 103, 108, 112, 116, 120, 125
+};
+static const uint8_t efm_cp_tuning[] PROGMEM = {
+  0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 29, 31, 33,
+  35, 37, 39, 41, 43, 45, 47, 49, 51, 53, 55, 57, 59, 61, 62, 64, 66,
+  68, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92, 94, 95, 97, 99, 101,
+  103, 105, 107, 109, 111, 113, 115, 117, 119, 121, 123, 125, 127};
+
+static const uint8_t efm_sd_tuning[] PROGMEM = {
+  1, 5, 9, 14, 18, 22, 27, 31, 35, 39, 44, 48, 52, 56, 61, 65, 69, 73, 78, 82, 
+86, 91, 95, 99, 103, 108, 112, 116, 120, 125, 
+};
+
+static const uint8_t efm_xt_tuning[] PROGMEM = {
+  1, 7, 12, 17, 23, 28, 33, 39, 44, 49, 55, 60, 65, 71, 76, 81, 87, 92, 97, 102, 
+  108, 113, 118, 124, 
+};
+
+static const uint8_t efm_bd_tuning[] PROGMEM = {
+  1, 3, 6, 9, 11, 14, 17, 19, 22, 25, 27, 30, 33, 35, 38, 41, 43, 46, 49, 51, 54, 
+  57, 59, 62, 65, 67, 70, 73, 75, 78, 81, 83, 86, 89, 91, 94, 97, 99, 102, 105, 107, 
+  110, 113, 115, 118, 121, 123, 126, 
+};
+static const uint8_t trx_cl_tuning[] PROGMEM = {
+  5, 11, 17, 23, 29, 36, 42, 48, 54, 60, 66, 72, 78, 84, 91, 97, 103, 109, 115, 121, 
+  127, 
+};
+static const uint8_t trx_sd_tuning[] PROGMEM = {
+  3, 13, 24, 35, 45, 56, 67, 77, 88, 98, 109, 120, 
+};
+static const uint8_t trx_xc_tuning[] PROGMEM = {
+  1, 6, 11, 17, 22, 27, 33, 38, 43, 49, 54, 60, 65, 70, 76, 81, 86, 92, 97, 102, 
+  108, 113, 118, 124, 
+};
+static const uint8_t trx_xt_tuning[] PROGMEM = {
+  2, 7, 12, 18, 23, 28, 34, 39, 44, 49, 55, 60, 65, 71, 76, 81, 87, 92, 97, 103, 
+  108, 113, 118, 124,
+};
+static const uint8_t trx_bd_tuning[] PROGMEM = {
+  1, 7, 12, 17, 23, 28, 33, 39, 44, 49, 55, 60, 66, 71, 76, 82, 87, 92, 98, 103, 
+  108, 114, 119, 124, 
+};
+static const uint8_t rom_tuning[] PROGMEM = {
+  0, 2, 5, 7, 9, 12, 14, 16, 19, 21, 23, 26, 28, 31, 34, 37, 40, 43, 46, 49, 52, 
+  55, 58, 61, 64, 67, 70, 73, 76, 79, 82, 85, 88, 91, 94, 97, 100, 102, 105, 107, 
+  109, (112), 114, 116, 119, 121, 123, 125, 
+};
+static const tuning_t rom_tuning_t = { ROM_MODEL,    45, 
+				       sizeof(rom_tuning), 4,   rom_tuning };
+static const tuning_t tunings[] = {
+  { EFM_RS_MODEL, 59, sizeof(efm_rs_tuning), 4, efm_rs_tuning },
+  { EFM_HH_MODEL, 59, sizeof(efm_hh_tuning), 8, efm_hh_tuning },
+  { EFM_CP_MODEL, 47, sizeof(efm_cp_tuning), 3, efm_cp_tuning },
+  { EFM_SD_MODEL, 47, sizeof(efm_sd_tuning), 5, efm_sd_tuning },
+  { EFM_XT_MODEL, 29, sizeof(efm_xt_tuning), 7, efm_xt_tuning },
+  { EFM_BD_MODEL, 20, sizeof(efm_bd_tuning), 4, efm_bd_tuning },
+  { TRX_CL_MODEL, 83, sizeof(trx_cl_tuning), 7, trx_cl_tuning },
+  { TRX_SD_MODEL, 53, sizeof(trx_sd_tuning), 12, trx_sd_tuning },
+  { TRX_XC_MODEL, 41, sizeof(trx_xc_tuning), 6, trx_xc_tuning },
+  { TRX_XT_MODEL, 38, sizeof(trx_xt_tuning), 6, trx_xt_tuning },
+  { TRX_BD_MODEL, 23, sizeof(trx_bd_tuning), 7, trx_bd_tuning },
+  { ROM_MODEL,    45, sizeof(rom_tuning),    4, rom_tuning    },
+};
+
+tuning_t const *track_tunings[16];
+
+const tuning_t PROGMEM *MDClass::getModelTuning(uint8_t model) {
+  uint8_t i;
+  if (((model >= 128) && (model <= 159))) {
+    return &rom_tuning_t;
+  }
+  for (i = 0; i < countof(tunings); i++) {
+    if (model == tunings[i].model) {
+      return tunings + i;
+    }
+  }
+
+  return NULL;
+}
 
 uint8_t MDClass::trackGetCCPitch(uint8_t track, uint8_t cc, int8_t *offset) {
   tuning_t const *tuning = getModelTuning(kit.machines[track].model);
@@ -202,7 +267,7 @@ void MDClass::sliceTrack32(uint8_t track, uint8_t from, uint8_t to, bool correct
   } else {
     pfrom = MIN(127, from * 4);
     pto = MIN(127, to * 4);
-    if (correct && pfrom >= 64)
+    if (correct && pfrom > 64)
       pfrom++;
   }
   setTrackParam(track, 4, pfrom);
@@ -226,8 +291,12 @@ bool MDClass::isMelodicTrack(uint8_t track) {
 }
 
 void MDClass::setLFOParam(uint8_t track, uint8_t param, uint8_t value) {
-  uint8_t data[3] = { 0x62, track << 3 | param, value };
-  MD.sendSysex(data, countof(data));
+  MidiUart.putc(0xF0);
+  MidiUart.sendRaw(machinedrum_sysex_hdr, sizeof(machinedrum_sysex_hdr));
+  MidiUart.putc(0x62);
+  MidiUart.putc(track << 3 | param);
+  MidiUart.putc(value);
+  MidiUart.putc(0xF7);
 }
 
 void MDClass::setLFO(uint8_t track, MDLFO *lfo) {
@@ -241,51 +310,28 @@ void MDClass::setLFO(uint8_t track, MDLFO *lfo) {
   setLFOParam(track, 7, lfo->mix);
 }
 
-void MDClass::mapMidiNote(uint8_t pitch, uint8_t track) {
-  uint8_t data[3] = { 0x5a, pitch, track };
-  MD.sendSysex(data, countof(data));
-}
-
-void MDClass::resetMidiMap() {
-  uint8_t data[1] = { 0x64 };
-  MD.sendSysex(data, countof(data));
-}
-
-void MDClass::setTrackRouting(uint8_t track, uint8_t output) {
-  uint8_t data[3] = { 0x5c, track, output };
-  MD.sendSysex(data, countof(data));
-}
-
-void MDClass::setTempo(uint16_t tempo) {
-  uint8_t data[3] = { 0x61, tempo >> 7, tempo & 0x7F };
-  MD.sendSysex(data, countof(data));
-}
-
-void MDClass::setTrigGroup(uint8_t srcTrack, uint8_t trigTrack) {
-  uint8_t data[3] = { 0x65, srcTrack, trigTrack };
-  MD.sendSysex(data, countof(data));
-}
-
-void MDClass::setMuteGroup(uint8_t srcTrack, uint8_t muteTrack) {
-  uint8_t data[3] = { 0x66, srcTrack, muteTrack };
-  MD.sendSysex(data, countof(data));
-}
-
 void MDClass::saveCurrentKit(uint8_t pos) {
-  uint8_t data[2] = { 0x59, pos & 0x7F };
-  MD.sendSysex(data, countof(data));
+  MidiUart.putc(0xF0);
+  MidiUart.sendRaw(machinedrum_sysex_hdr, sizeof(machinedrum_sysex_hdr));
+  MidiUart.putc(0x59);
+  MidiUart.putc(pos & 0x7F);
+  MidiUart.putc(0xF7);
 }
 
-void MDClass::assignMachine(uint8_t track, uint8_t model, uint8_t init) {
-  uint8_t data[] = { 0x5B, track, model, 0x00, init };
-  if (model >= 128) {
-    data[2] = (model - 128);
-    data[3] = 0x01;
+void MDClass::assignMachine(uint8_t track, uint8_t model) {
+  MidiUart.putc(0xF0);
+  MidiUart.sendRaw(machinedrum_sysex_hdr, sizeof(machinedrum_sysex_hdr));
+  MidiUart.putc(0x5B);
+  MidiUart.putc(track);
+  if (model > 128) {
+    MidiUart.putc(model - 128);
+    MidiUart.putc(0x01);
   } else {
-    data[2] = model;
-    data[3] = 0x00;
+    MidiUart.putc(model);
+    MidiUart.putc(0x00);
   }
-  MD.sendSysex(data, countof(data));
+  MidiUart.putc(0x00);
+  MidiUart.putc(0xF7);
 }
 
 void MDClass::setMachine(uint8_t track, MDMachine *machine) {
@@ -297,18 +343,19 @@ void MDClass::setMachine(uint8_t track, MDMachine *machine) {
 }
 
 void MDClass::muteTrack(uint8_t track, bool mute) {
-  if (global.baseChannel == 127)
-    return;
-      
   uint8_t channel = track >> 2;
   uint8_t b = track & 3;
   uint8_t cc = 16 + b;
-  MidiUart.sendCC(channel + global.baseChannel, cc, mute ? 1 : 0);
+  MidiUart.sendCC(channel + baseChannel, cc, mute ? 1 : 0);
 }
 
 void MDClass::setStatus(uint8_t id, uint8_t value) {
-  uint8_t data[] = { 0x71, id & 0x7F, value & 0x7F };
-  MD.sendSysex(data, countof(data));
+  MidiUart.putc(0xF0);
+  MidiUart.sendRaw(machinedrum_sysex_hdr, sizeof(machinedrum_sysex_hdr));
+  MidiUart.putc(0x71);
+  MidiUart.putc(id & 0x7F);
+  MidiUart.putc(value & 0x7F);
+  MidiUart.putc(0xf7);
 }
 
 void MDClass::loadGlobal(uint8_t id) {
@@ -347,94 +394,19 @@ void MDClass::getPatternName(uint8_t pattern, char str[5]) {
 }
 
 void MDClass::requestKit(uint8_t kit) {
-  sendRequest(MD_KIT_REQUEST_ID, kit);
+  MD.sendRequest(MD_KIT_REQUEST_ID, kit);
 }
 
 void MDClass::requestPattern(uint8_t pattern) {
-  sendRequest(MD_PATTERN_REQUEST_ID, pattern);
+  MD.sendRequest(MD_PATTERN_REQUEST_ID, pattern);
 }
 
 void MDClass::requestSong(uint8_t song) {
-  sendRequest(MD_SONG_REQUEST_ID, song);
+  MD.sendRequest(MD_SONG_REQUEST_ID, song);
 }
 
 void MDClass::requestGlobal(uint8_t global) {
-  sendRequest(MD_GLOBAL_REQUEST_ID, global);
+  MD.sendRequest(MD_GLOBAL_REQUEST_ID, global);
 }
-
-bool MDClass::checkParamSettings() {
-  if (loadedGlobal) {
-    return (MD.global.baseChannel >= 0) && (MD.global.baseChannel <= 12);
-  } else {
-    return false;
-  }
-}
-
-bool MDClass::checkTriggerSettings() {
-  return false;
-}
-
-bool MDClass::checkClockSettings() {
-  return false;
-}
-
-class BlockCurrentStatusCallback : public MDCallback {
-public:
-  uint8_t type;
-  uint8_t value;
-  bool received;
-
-  BlockCurrentStatusCallback(uint8_t _type) {
-    type = _type;
-    received = false;
-    value = 255;
-  }
-
-  void onStatusResponseCallback(uint8_t _type, uint8_t param) {
-    if (type == _type) {
-      value = param;
-      received = true;
-    }
-  }
-};
-
-uint8_t MDClass::getBlockingStatus(uint8_t type, uint16_t timeout) {
-  uint16_t start_clock = read_slowclock();
-  uint16_t current_clock = start_clock;;
-  BlockCurrentStatusCallback cb(type);
-
-  MDSysexListener.addOnStatusResponseCallback
-    (&cb, (md_status_callback_ptr_t)&BlockCurrentStatusCallback::onStatusResponseCallback);
-  MD.sendRequest(MD_STATUS_REQUEST_ID, type);
-  do {
-    current_clock = read_slowclock();
-    handleIncomingMidi();
-  } while ((clock_diff(start_clock, current_clock) < timeout) && !cb.received);
-  MDSysexListener.removeOnStatusResponseCallback(&cb);
-
-  return cb.value;
-}
-  
-
-uint8_t MDClass::getCurrentKit(uint16_t timeout) {
-  uint8_t value = getBlockingStatus(MD_CURRENT_KIT_REQUEST, timeout);
-  if (value == 255) {
-    return 255;
-  } else {
-    MD.currentKit = value;
-    return value;
-  }
-}
-
-uint8_t MDClass::getCurrentPattern(uint16_t timeout) {
-  uint8_t value = getBlockingStatus(MD_CURRENT_PATTERN_REQUEST, timeout);
-  if (value == 255) {
-    return 255;
-  } else {
-    MD.currentPattern = value;
-    return value;
-  }
-}
-
 
 MDClass MD;

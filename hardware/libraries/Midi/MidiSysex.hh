@@ -2,6 +2,7 @@
 #define MIDISYSEX_H__
 
 #include <inttypes.h>
+
 #include "WProgram.h"
 
 #ifndef SYSEX_BUF_SIZE
@@ -26,11 +27,6 @@ class MidiSysexListenerClass {
   }
   virtual void handleByte(uint8_t byte) {
   }
-
-#ifdef HOST_MIDIDUINO
-  virtual ~MidiSysexListenerClass() {
-  }
-#endif
 };
 
 #define NUM_SYSEX_SLAVES 4
@@ -43,12 +39,6 @@ class MidiSysexClass {
   bool sysexLongId;
 
  public:
-  void startRecord(uint8_t *buf = NULL, uint16_t maxLen = 0);
-  void stopRecord();
-  
-  void resetRecord(uint8_t *buf = NULL, uint16_t maxLen = 0);
-  bool recordByte(uint8_t c);
-
   uint16_t max_len;
   uint16_t recordLen;
   uint8_t *data;
@@ -83,7 +73,7 @@ class MidiSysexClass {
     }
     return false;
   }
-  void removeSysexListener(MidiSysexListenerClass *listener) {
+  void removeSysexListeners(MidiSysexListenerClass *listener) {
     for (int i = 0; i < NUM_SYSEX_SLAVES; i++) {
       if (listeners[i] == listener)
 	listeners[i] = NULL;
@@ -91,28 +81,23 @@ class MidiSysexClass {
   }
   bool isListenerActive(MidiSysexListenerClass *listener);
 
+  void startRecord(uint8_t *buf = NULL, uint16_t maxLen = 0);
+  void stopRecord();
   void reset();
   
   void start();
   void abort();
   void end();
   void handleByte(uint8_t byte);
-
 };
 
 class MididuinoSysexListenerClass : public MidiSysexListenerClass {
  public:
   MididuinoSysexListenerClass();
   virtual void handleByte(uint8_t byte);
-
-#ifdef HOST_MIDIDUINO
-  virtual ~MididuinoSysexListenerClass() {
-  }
-#endif
 };
 
 extern MidiSysexClass MidiSysex;
-extern MidiSysexClass MidiSysex2;
 extern MididuinoSysexListenerClass MididuinoSysexListener;
 
 #endif /* MIDISYSEX_H__ */

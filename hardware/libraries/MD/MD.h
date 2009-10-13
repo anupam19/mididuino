@@ -1,20 +1,14 @@
 #ifndef MD_H__
 #define MD_H__
 
+#include <inttypes.h>
+#include <avr/pgmspace.h>
 #include "WProgram.h"
 
 #include "Elektron.hh"
-
-class MDCallback {
-};
-typedef void(MDCallback::*md_callback_ptr_t)();
-typedef void(MDCallback::*md_status_callback_ptr_t)(uint8_t type, uint8_t param);
-
-
 #include "MDSysex.hh"
 #include "MDParams.hh"
 #include "MDMessages.hh"
-#include "MDEncoders.h"
 
 extern uint8_t machinedrum_sysex_hdr[5];
 
@@ -26,24 +20,38 @@ typedef struct tuning_s {
   const uint8_t *tuning;
 } tuning_t;
 
+typedef struct machine_name_s {
+  char name[7];
+  uint8_t id;
+} machine_name_t;
+
+#ifdef MIDIDUINO_USE_GUI
+class MDEncoder : public RangeEncoder {
+public:
+  uint8_t track;
+  uint8_t param;
+
+  MDEncoder(uint8_t _track, uint8_t _param, char *_name = NULL, uint8_t init = 0);
+  void handle(uint8_t val);
+};
+#endif
 
 class MDClass {
  public:
-  MDClass();
+  MDClass() {
+    currentGlobal = -1;
+    currentKit = -1;
+    baseChannel = 0;
+  }
   int currentGlobal;
   int currentKit;
-  int currentPattern;
-
-  bool loadedKit;
+  uint8_t baseChannel;
   MDKit kit;
-  bool loadedGlobal;
   MDGlobal global;
 
   void parseCC(uint8_t channel, uint8_t cc, uint8_t *track, uint8_t *param);
   void triggerTrack(uint8_t track, uint8_t velocity);
   void setTrackParam(uint8_t track, uint8_t param, uint8_t value);
-
-  void sendSysex(uint8_t *bytes, uint8_t cnt);
 
   void sendFXParam(uint8_t param, uint8_t value, uint8_t type);
   void setEchoParam(uint8_t param, uint8_t value);
@@ -69,31 +77,14 @@ class MDClass {
   void setLFOParam(uint8_t track, uint8_t param, uint8_t value);
   void setLFO(uint8_t track, MDLFO *lfo);
   
-  void assignMachine(uint8_t track, uint8_t model, uint8_t init = 0);
-
+  void assignMachine(uint8_t track, uint8_t model);
+  
   void setMachine(uint8_t track, MDMachine *machine);
 
   void muteTrack(uint8_t track, bool mute = true);
   void unmuteTrack(uint8_t track) {
     muteTrack(track, false);
   }
-
-  void mapMidiNote(uint8_t pitch, uint8_t track);
-  void resetMidiMap();
-  
-  static const uint8_t OUTPUT_A = 0;
-  static const uint8_t OUTPUT_B = 1;
-  static const uint8_t OUTPUT_C = 2;
-  static const uint8_t OUTPUT_D = 3;
-  static const uint8_t OUTPUT_E = 4;
-  static const uint8_t OUTPUT_F = 5;
-  static const uint8_t OUTPUT_MAIN = 6;
-  
-  void setTrackRouting(uint8_t track, uint8_t output);
-  void setTempo(uint16_t tempo);
-
-  void setTrigGroup(uint8_t srcTrack, uint8_t trigTrack);
-  void setMuteGroup(uint8_t srcTrack, uint8_t muteTrack);
 
   void setStatus(uint8_t id, uint8_t value);
   void loadGlobal(uint8_t id);
@@ -112,20 +103,9 @@ class MDClass {
   void requestPattern(uint8_t pattern);
   void requestSong(uint8_t song);
   void requestGlobal(uint8_t global);
-
-  /* check channel settings to see if MD can receive and send CC for params */
-  bool checkParamSettings();
-  bool checkTriggerSettings();
-  bool checkClockSettings();
-
-  /* requests */
-  uint8_t getBlockingStatus(uint8_t type, uint16_t timeout);
-  uint8_t getCurrentKit(uint16_t timeout);
-  uint8_t getCurrentPattern(uint16_t timeout);
+  
 };
 
 extern MDClass MD;
-
-#include "MDTask.hh"
 
 #endif /* MD_H__ */

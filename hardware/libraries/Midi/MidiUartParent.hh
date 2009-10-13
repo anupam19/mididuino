@@ -2,8 +2,6 @@
 #define MIDIUARTPARENT_H__
 
 #include <midi-common.hh>
-#include "Vector.hh"
-#include "Callback.hh"
 
 class MidiUartParent {
 public:
@@ -27,25 +25,10 @@ public:
   }
   
   virtual void putc(uint8_t c) { }
-  virtual void putc_immediate(uint8_t c) { putc(c); }
+  virtual void putc_immediate(uint8_t c) { }
   virtual bool avail() { return false; }
-
   virtual uint8_t getc() {
     return 0;
-  }
-
-  virtual void sendMessage(uint8_t cmdByte) {
-    sendCommandByte(cmdByte);
-  }
-  virtual void sendMessage(uint8_t cmdByte, uint8_t byte1) {
-    sendCommandByte(cmdByte);
-    putc(byte1);
-  }
-  
-  virtual void sendMessage(uint8_t cmdByte, uint8_t byte1, uint8_t byte2) {
-    sendCommandByte(cmdByte);
-    putc(byte1);
-    putc(byte2);
   }
 
   void sendCommandByte(uint8_t byte) {
@@ -65,41 +48,6 @@ public:
     }
   }
 
-  CallbackVector1<MidiCallback, 8, uint8_t *>noteOnCallbacks;
-  CallbackVector1<MidiCallback, 8, uint8_t *>noteOffCallbacks;
-  CallbackVector1<MidiCallback, 8, uint8_t *>ccCallbacks;
-
-  void addOnNoteOnCallback(MidiCallback *obj, void(MidiCallback::*func)(uint8_t *msg)) {
-    noteOnCallbacks.add(obj, func);
-  }
-  void removeOnNoteOnCallback(MidiCallback *obj, void(MidiCallback::*func)(uint8_t *msg) ) {
-    noteOnCallbacks.remove(obj, func);
-  }
-  void removeOnNoteOnCallback(MidiCallback *obj) {
-    noteOnCallbacks.remove(obj);
-  }
-
-  void addOnNoteOffCallback(MidiCallback *obj, void(MidiCallback::*func)(uint8_t *msg)) {
-    noteOffCallbacks.add(obj, func);
-  }
-  void removeOnNoteOffCallback(MidiCallback *obj, void(MidiCallback::*func)(uint8_t *msg) ) {
-    noteOffCallbacks.remove(obj, func);
-  }
-  void removeOnNoteOffCallback(MidiCallback *obj) {
-    noteOffCallbacks.remove(obj);
-  }
-
-  void addOnControlChangeCallback(MidiCallback *obj, void(MidiCallback::*func)(uint8_t *msg)) {
-    ccCallbacks.add(obj, func);
-  }
-  void removeOnControlChangeCallback(MidiCallback *obj, void(MidiCallback::*func)(uint8_t *msg) ) {
-    ccCallbacks.remove(obj, func);
-  }
-  void removeOnControlChangeCallback(MidiCallback *obj) {
-    ccCallbacks.remove(obj);
-  }
-
-  
   inline void resetRunningStatus() {
     running_status = 0;
   }
@@ -147,50 +95,44 @@ public:
   }
 
   void sendNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
-    uint8_t msg[3] = {
-      MIDI_NOTE_ON | channel,
-      note,
-      velocity
-    };
-    noteOnCallbacks.call(msg);
-    sendMessage(msg[0], msg[1], msg[2]);
+    sendCommandByte(MIDI_NOTE_ON | channel);
+    putc(note);
+    putc(velocity);
   }
 
   void sendNoteOff(uint8_t channel, uint8_t note, uint8_t velocity) {
-    uint8_t msg[3] = {
-      MIDI_NOTE_OFF | channel,
-      note,
-      velocity
-    };
-    noteOffCallbacks.call(msg);
-    sendMessage(msg[0], msg[1], msg[2]);
+    sendCommandByte(MIDI_NOTE_OFF | channel);
+    putc(note);
+    putc(velocity);
   }
 
   void sendCC(uint8_t channel, uint8_t cc, uint8_t value) {
-    uint8_t msg[3] = {
-      MIDI_CONTROL_CHANGE | channel,
-      cc,
-      value
-    };
-    ccCallbacks.call(msg);
-    sendMessage(msg[0], msg[1], msg[2]);
+    sendCommandByte(MIDI_CONTROL_CHANGE | channel);
+    putc(cc);
+    putc(value);
   }
 
   void sendProgramChange(uint8_t channel, uint8_t program) {
-    sendMessage(MIDI_PROGRAM_CHANGE | channel, program);
+    sendCommandByte(MIDI_PROGRAM_CHANGE | channel);
+    putc(program);
   }
 
   void sendPolyKeyPressure(uint8_t channel, uint8_t note, uint8_t pressure) {
-    sendMessage(MIDI_AFTER_TOUCH | channel, note, pressure);
+    sendCommandByte(MIDI_AFTER_TOUCH | channel);
+    putc(note);
+    putc(pressure);
   }
 
   void sendChannelPressure(uint8_t channel, uint8_t pressure) {
-    sendMessage(MIDI_CHANNEL_PRESSURE | channel, pressure);
+    sendCommandByte(MIDI_CHANNEL_PRESSURE | channel);
+    putc(pressure);
   }
 
   void sendPitchBend(uint8_t channel, int16_t pitchbend) {
+    sendCommandByte(MIDI_PITCH_WHEEL | channel);
     pitchbend += 8192;
-    sendMessage(MIDI_PITCH_WHEEL | channel, pitchbend & 0x7F, (pitchbend >> 7) & 0x7F);
+    putc(pitchbend & 0x7F);
+    putc((pitchbend >> 7) & 0x7F);
   }
 
   void sendNRPN(uint8_t channel, uint16_t parameter, uint8_t value) {
@@ -217,7 +159,7 @@ public:
     sendCC(channel, 38, (value & 0x7F));
   }
 
-  virtual void sendSysex(uint8_t *data, uint8_t cnt) {
+  void sendSysex(uint8_t *data, uint8_t cnt) {
     sendCommandByte(0xF7);
     puts(data, cnt);
     sendCommandByte(0xF0);
@@ -228,12 +170,6 @@ public:
   inline void sendRaw(uint8_t byte) {
     putc(byte);
   }
-
-#ifdef HOST_MIDIDUINO
-  virtual ~MidiUartParent() {
-  }
-#endif
-  
 };
 
 #endif /* MIDIUARTPARENT_H__ */

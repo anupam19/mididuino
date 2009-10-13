@@ -90,37 +90,11 @@ uint8_t MidiUartClass::getc() {
 SIGNAL(USART0_RX_vect) {
   uint8_t c = UART_READ_CHAR();
 
-  //  setLed();
-  if (MIDI_IS_REALTIME_STATUS_BYTE(c) && MidiClock.mode == MidiClock.EXTERNAL) {
-    switch (c) {
-    case MIDI_CLOCK:
-      MidiClock.handleClock();
-      break;
-
-    case MIDI_START:
-      MidiClock.handleMidiStart();
-      break;
-
-    case MIDI_STOP:
-      MidiClock.handleMidiStop();
-      break;
-
-    default:
-      MidiUart.rxRb.put(c);
-      break;
-    }
+  if (c == 0xF8 && MidiClock.mode == MidiClock.EXTERNAL) {
+    MidiClock.handleClock();
   } else {
     MidiUart.rxRb.put(c);
-
-#if 0
-    // show overflow debug
-    if (MidiUart.rxRb.overflow) {
-      setLed();
-    }
-#endif
-    
   }
-  //  clearLed();
 }
 
 #ifdef TX_IRQ
@@ -162,34 +136,10 @@ SIGNAL(USART1_RX_vect) {
   uint8_t c = UART2_READ_CHAR();
 
   // XXX clock on second input
-  if (MIDI_IS_REALTIME_STATUS_BYTE(c) && MidiClock.mode == MidiClock.EXTERNAL_UART2) {
-    switch (c) {
-    case MIDI_CLOCK:
-      MidiClock.handleClock();
-      break;
-
-    case MIDI_START:
-      MidiClock.handleMidiStart();
-      break;
-
-    case MIDI_STOP:
-      MidiClock.handleMidiStop();
-      break;
-
-    default:
-      MidiUart2.rxRb.put(c);
-      break;
-    }
+  if (c == 0xF8 && MidiClock.mode == MidiClock.EXTERNAL_UART2) {
+    MidiClock.handleClock();
   } else {
-    if (Midi2.midiActive)
-      MidiUart2.rxRb.put(c);
+    MidiUart2.rxRb.put(c);
   }
-
-#if 0
-    // show overflow debug
-    if (MidiUart.rxRb.overflow) {
-      setLed();
-    }
-#endif
 }
 

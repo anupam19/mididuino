@@ -4,9 +4,9 @@
 #include "WProgram.h"
 #include "Midi.h"
 #include "MidiSysex.hh"
-#include "Vector.hh"
-#include "Callback.hh"
-#include "MD.h"
+
+typedef void (*md_callback_t)();
+typedef void (*md_status_callback_t)(uint8_t type, uint8_t param);
 
 typedef enum {
     MD_NONE,
@@ -19,84 +19,67 @@ typedef enum {
     
     MD_DONE
 } getCurrentKitStatus_t;
-
 class MDSysexListenerClass : public MidiSysexListenerClass {
 public:
-  CallbackVector<MDCallback,8> onGlobalMessageCallbacks;
-  CallbackVector<MDCallback,8> onKitMessageCallbacks;
-  CallbackVector<MDCallback,8> onSongMessageCallbacks;
-  CallbackVector<MDCallback,8> onPatternMessageCallbacks;
-  CallbackVector2<MDCallback,8,uint8_t,uint8_t> onStatusResponseCallbacks;
+  md_callback_t onPatternMessageCallback;
+  md_status_callback_t onStatusResponseCallback;
+  md_callback_t onGlobalMessageCallback;
+  md_callback_t    onKitMessageCallback;
+  md_callback_t onSongMessageCallback;
+  md_callback_t onCurrentKitCallback;
   
-  bool isMDMessage;
-  uint8_t msgType;
+  getCurrentKitStatus_t mdGetCurrentKitStatus;
 
+public:
   MDSysexListenerClass() : MidiSysexListenerClass() {
     ids[0] = 0;
     ids[1] = 0x20;
     ids[2] = 0x3c;
+    onStatusResponseCallback = NULL;
+    onGlobalMessageCallback = NULL;
+    onKitMessageCallback = NULL;
+    onCurrentKitCallback = NULL;
   }
 
+  uint8_t msgType;
+
+  void getCurrentKit(md_callback_t callback);
+
+  void setOnPatternMessageCallback(md_callback_t callback) {
+    onPatternMessageCallback = callback;
+  }
+  
+  void setOnCurrentKitCallback(md_callback_t callback) {
+    onCurrentKitCallback = callback;
+  }
+  
+  void setOnStatusResponseCallback(md_status_callback_t callback) {
+    onStatusResponseCallback = callback;
+  }
+  void setOnGlobalMessageCallback(md_callback_t callback) {
+    onGlobalMessageCallback = callback;
+  }
+  void setOnKitMessageCallback(md_callback_t callback) {
+    onKitMessageCallback = callback;
+  }
+
+  void setOnSongMessageCallback(md_callback_t callback) {
+    onSongMessageCallback = callback;
+  }
+  
+  void handleGlobalDump(uint8_t c);
+  void handleKitDump(uint8_t c);
+  
   virtual void start();
   virtual void handleByte(uint8_t byte);
   virtual void end();
 
   void setup();
-
-  void addOnStatusResponseCallback(MDCallback *obj, md_status_callback_ptr_t func) {
-    onStatusResponseCallbacks.add(obj, func);
-  }
-  void removeOnStatusResponseCallback(MDCallback *obj, md_status_callback_ptr_t func) {
-    onStatusResponseCallbacks.remove(obj, func);
-  }
-  void removeOnStatusResponseCallback(MDCallback *obj) {
-    onStatusResponseCallbacks.remove(obj);
-  }
-
-  void addOnGlobalMessageCallback(MDCallback *obj, md_callback_ptr_t func) {
-    onGlobalMessageCallbacks.add(obj, func);
-  }
-  void removeOnGlobalMessageCallback(MDCallback *obj, md_callback_ptr_t func) {
-    onGlobalMessageCallbacks.remove(obj, func);
-  }
-  void removeOnGlobalMessageCallback(MDCallback *obj) {
-    onGlobalMessageCallbacks.remove(obj);
-  }
-  
-  void addOnKitMessageCallback(MDCallback *obj, md_callback_ptr_t func) {
-    onKitMessageCallbacks.add(obj, func);
-  }
-  void removeOnKitMessageCallback(MDCallback *obj, md_callback_ptr_t func) {
-    onKitMessageCallbacks.remove(obj, func);
-  }
-  void removeOnKitMessageCallback(MDCallback *obj) {
-    onKitMessageCallbacks.remove(obj);
-  }
-  
-  void addOnPatternMessageCallback(MDCallback *obj, md_callback_ptr_t func) {
-    onPatternMessageCallbacks.add(obj, func);
-  }
-  void removeOnPatternMessageCallback(MDCallback *obj, md_callback_ptr_t func) {
-    onPatternMessageCallbacks.remove(obj, func);
-  }
-  void removeOnPatternMessageCallback(MDCallback *obj) {
-    onPatternMessageCallbacks.remove(obj);
-  }
-  
-  void addOnSongMessageCallback(MDCallback *obj, md_callback_ptr_t func) {
-    onSongMessageCallbacks.add(obj, func);
-  }
-  void removeOnSongMessageCallback(MDCallback *obj, md_callback_ptr_t func) {
-    onSongMessageCallbacks.remove(obj, func);
-  }
-  void removeOnSongMessageCallback(MDCallback *obj) {
-    onSongMessageCallbacks.remove(obj);
-  }
-  
 };
 
 #include "MDMessages.hh"
 
 extern MDSysexListenerClass MDSysexListener;
+
 
 #endif /* MDSYSEX_H__ */

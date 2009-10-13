@@ -7,7 +7,6 @@
  * published by the Free Software Foundation.
  */
 
-#include "helpers.h"
 #include <string.h>
 #include <SDCard.h>
 
@@ -15,19 +14,47 @@
 #define NULL 0
 #endif
 
-/************************** SDCARD CLASS ***********************************/
-
 SDCardClass::SDCardClass() {
   partition = NULL;
   fs = NULL;
-  isInit = false;
+  root_dir = NULL;
+  current_dir = NULL;
 }
 
+/* find name in directory dd, fill dir_entry and return 1 on success */
+uint8_t find_file_in_dir(struct fat_fs_struct *fs,
+			 struct fat_dir_struct *dd,
+			 const char *name,
+			 struct fat_dir_entry_struct *dir_entry) {
+  while (fat_read_dir(dd, dir_entry)) {
+    if (strcmp(dir_entry->long_name, name) == 0) {
+      fat_reset_dir(dd);
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+struct fat_file_struct* open_file_in_dir(struct fat_fs_struct* fs, struct fat_dir_struct* dd, const char* name)
+{
+    struct fat_dir_entry_struct file_entry;
+    if(!find_file_in_dir(fs, dd, name, &file_entry))
+        return 0;
+
+    return fat_open_file(fs, &file_entry);
+}
 
 uint8_t SDCardClass::init() {
-  if (isInit)
-    return 0;
-  
+  if (current_dir != NULL) {
+    fat_close_dir(current_dir);
+    current_dir = NULL;
+  }
+  if (root_dir != NULL) {
+    fat_close_dir(root_dir);
+    root_dir = NULL;
+  }
+
   if (fs != NULL) {
     fat_close(fs);
     fs = NULL;
@@ -55,9 +82,95 @@ uint8_t SDCardClass::init() {
     return 3;
   }
 
-  isInit = true;
+  fat_get_dir_entry_of_path(fs, "/", &root_dir_entry);
+  root_dir = fat_open_dir(fs, &root_dir_entry);
+  if (!root_dir) {
+    return 4;
+  }
+
+  openDirectory((char *)"/");
 
   return 0;
+}
+
+bool SDCardClass::openDirectory(char *path) {
+  if (current_dir != NULL) {
+    fat_close_dir(current_dir);
+    current_dir = NULL;
+  }
+  fat_get_dir_entry_of_path(fs, path, &current_dir_entry);
+  current_dir = fat_open_dir(fs, &current_dir_entry);
+  if (current_dir == NULL)
+    return createDirectory(path);
+  else
+    return true;
+}
+
+bool SDCardClass::createDirectory(char *dir) {
+  if (current_dir == NULL)
+    return false;
+
+  if (dir[0] == '/') {
+    if (!openDirectory((char *)"/"))
+      return false;
+    dir++;
+  }
+
+  char subDir[64];
+  while (1) {
+    char *pos = strchr(dir, '/');
+    if (pos == NULL) {
+      strncpy(subDir, dir, sizeof(subDir) - 1);
+    } else {
+      int len = pos - dir;
+      memcpy(subDir, dir, len);
+      subDir[len] = '\0';
+      dir = pos + 1;
+    }
+    
+    struct fat_dir_entry_struct new_dir_entry;
+    
+    int result = fat_create_dir(current_dir, subDir, &new_dir_entry);
+
+    if (result == 0 && strcmp(subDir, new_dir_entry.long_name)) {
+      return false;
+    } else {
+      memcpy(&current_dir_entry, &new_dir_entry, sizeof(current_dir_entry));
+      fat_close_dir(current_dir);
+      current_dir = fat_open_dir(fs, &new_dir_entry);
+      if (current_dir == NULL)
+	return false;
+
+      if (pos == NULL) {
+	sd_raw_sync();
+	return (current_dir != NULL);
+      }
+    }
+  }
+}
+
+bool SDCardClass::writeFile(char *path, uint8_t *buf, uint8_t len) {
+  SDCardFile file;
+  if (!file.create(path)) {
+    return false;
+  }
+  uint8_t l2 = file.write(buf, len);
+  if (l2 != len) {
+    file.close();
+    return false;
+  }
+  file.close();
+  return true;
+}
+
+int SDCardClass::readFile(char *path, uint8_t *buf, uint8_t len) {
+  SDCardFile file;
+  if (!file.open(path)) {
+    return -1;
+  }
+  uint8_t l2 = file.read(buf, len);
+  file.close();
+  return l2;
 }
 
 offset_t SDCardClass::getSize() {
@@ -74,288 +187,64 @@ offset_t SDCardClass::getFree() {
     return 0;
 }
 
-bool SDCardClass::findFile(const char *path, struct fat_dir_entry_struct *dir_entry) {
-  return fat_get_dir_entry_of_path(SDCard.fs, path, dir_entry);
+
+
+SDCardFile::SDCardFile() {
+  fd = NULL;
 }
 
-bool SDCardClass::findFile(const char *path, SDCardEntry *entry) {
-  return findFile(path, &entry->dir_entry);
-}
+bool SDCardFile::open(char *path) {
+  if (SDCard.current_dir == NULL)
+    return false;
 
-bool SDCardClass::createDirectory(const char *path, SDCardEntry *entry) {
-  SDCardEntry root((char *)"/");
-  if (entry == NULL) {
-    SDCardEntry bla;
-    return root.createSubDirectory(path, &bla);
-  } else {
-    return root.createSubDirectory(path, entry);
-  }
-}
+  close();
 
-bool SDCardClass::deleteFile(const char *path, bool recursive) {
-  SDCardEntry file(path);
-  return file.deleteEntry(recursive);
-}
-
-bool SDCardClass::writeFile(const char *path, const uint8_t *buf, uint8_t len, bool createDir) {
-  SDCardFile file(path);
-  SDCardEntry parentDir(file.dir);
-  if (!parentDir.exists) {
-    if (createDir) {
-      if (!createDirectory(file.dir)) {
-	return false;
-      }
-      parentDir.setPath(file.dir);
-    } else {
-      return false;
-    }
-  }
-
-  return (file.writeFile(buf, len) == len);
-}
-
-int SDCardClass::readFile(const char *path, uint8_t *buf, uint8_t len) {
-  SDCardFile file(path);
-  return file.readFile(buf, len);
-}
-
-int SDCardClass::listDirectory(const char *path, SDCardEntry entries[], int maxCount) {
-  SDCardEntry entry(path);
-  return entry.listDirectory(entries, maxCount);
-}
-
-SDCardClass SDCard;
-
-/****************************** SDCARD ENTRY ***********************************/
-
-SDCardEntry::SDCardEntry() {
-  exists = false;
-  dir[0] = '\0';
-  name[0] = '\0';
-}
-
-SDCardEntry::SDCardEntry(const char *path) {
-  setPath(path);
-}
-
-bool SDCardEntry::setPath(const char *path) {
-  exists = SDCard.findFile(path, this);
-
-  const char *pos = strrchr(path, '/');
+  char *pos = strrchr(path, '/');
   if (pos != NULL) {
-    uint8_t len = MIN(sizeof(dir), (uint16_t)(pos - path));
-    if (len == 0) {
-      m_strncpy(dir, "/", sizeof(dir));
-    } else {
-      m_strncpy(dir, path, len);
-    }
-    m_strncpy(name, pos + 1, sizeof(name));
-  } else {
-    m_strncpy(dir, path, sizeof(dir));
+    int len = pos - path;
+    char subPath[len+1];
+    memcpy(subPath, path, len);
+    subPath[len] = 0;
+    SDCard.createDirectory(subPath);
+    path = pos + 1;
   }
 
-  return exists;
-}
-
-bool SDCardEntry::isDirectory() {
-  return exists && dir_entry.attributes & FAT_ATTRIB_DIR;
-}
-
-bool SDCardEntry::findFile(const char *name, struct fat_dir_entry_struct *entry) {
-  if (!isDirectory())
-    return false;
-
-  fat_dir_struct *dd = fat_open_dir(SDCard.fs, &dir_entry);
-  if (dd == NULL)
-    return false;
-
-  while (fat_read_dir(dd, entry)) {
-    if (strcmp(entry->long_name, name) == 0) {
-      fat_close_dir(dd);
-      return true;
-    }
-  }
-
-  fat_close_dir(dd);
-  return false;
-}
-
-int SDCardEntry::listDirectory(SDCardEntry entries[], int maxCount) {
-  if (!isDirectory())
-    return -1;
-  
-  int entryCount = 0;
-
-  fat_dir_struct *dd = fat_open_dir(SDCard.fs, &dir_entry);
-  if (dd == NULL)
-    return -1;
-  
-  while (fat_read_dir(dd, &entries[entryCount].dir_entry) && (entryCount < maxCount)) {
-    if (!strcmp(entries[entryCount].dir_entry.long_name, "."))
-      continue;
-    entries[entryCount].setFromParentEntry(this);
-    entryCount++;
-  }
-  
-  fat_close_dir(dd);
-  return entryCount;
-}
-
-void SDCardEntry::setFromParentEntry(SDCardEntry *parent) {
-  m_strncpy(dir, parent->dir, sizeof(dir));
-  m_strnappend(dir, parent->dir_entry.long_name, sizeof(dir));
-  
-  m_strncpy(name, dir_entry.long_name, sizeof(name));
-  exists = true;
-}
-
-bool SDCardEntry::createSubDirectory(const char *path, struct fat_dir_entry_struct *new_entry) {
-  if (path[0] == '/')
-    path++;
-
-  fat_dir_struct *dd = fat_open_dir(SDCard.fs, &dir_entry);
-  if (dd == NULL)
-    return false;
-  
-  char subDir[64];
-  while (1) {
-    const char *pos = strchr(path, '/');
-    if (pos == NULL) {
-      m_strncpy(subDir, path, sizeof(subDir) - 1);
-    } else {
-      int len = pos - path;
-      memcpy(subDir, path, len);
-      subDir[len] = '\0';
-      path = pos + 1;
-    }
-    
-    struct fat_dir_entry_struct new_dir_entry;
-    
-    int result = fat_create_dir(dd, subDir, &new_dir_entry);
-
-    if (result == 0 && strcmp(subDir, new_dir_entry.long_name)) {
-      fat_close_dir(dd);
-      return false;
-    } else {
-      memcpy(new_entry, &new_dir_entry, sizeof(new_dir_entry));
-      fat_close_dir(dd);
-      dd = fat_open_dir(SDCard.fs, &new_dir_entry);
-
-      if (dd == NULL) {
-	return false;
-      } else {
-	if (pos == NULL) {
-	  sd_raw_sync();
-	  fat_close_dir(dd);
-	  return true;
-	}
-      }
-    }
-  }
-}
-
-/* recursively delete entries */
-bool SDCardEntry::deleteFirstEntry() {
-  if (!isDirectory())
-    return false;
-
-
-  fat_dir_struct *dd = fat_open_dir(SDCard.fs, &dir_entry);
-  if (dd == NULL)
-    return false;
-  
-  SDCardEntry entry;
-  uint8_t ret;
- again:
-  ret = fat_read_dir(dd, &entry.dir_entry);
-  if (!strcmp(entry.dir_entry.long_name, ".") ||
-      !strcmp(entry.dir_entry.long_name, "..")) {
-    goto again;
-  }
-  fat_close_dir(dd);
-
-  if (!ret) {
+  if (!find_file_in_dir(SDCard.fs, SDCard.current_dir, path, &file_dir_entry)) {
     return false;
   }
-  entry.setFromParentEntry(this);
-  return entry.deleteEntry(true);
-}
-
-bool SDCardEntry::deleteEntry(bool recursive) {
-  if (!exists)
-    return true;
   
-  if (!isDirectory()) {
-    uint8_t ret = fat_delete_file(SDCard.fs, &dir_entry);
-    if (ret) {
-      exists = false;
-    }
-    return ret;
-  } else {
-    while (!isEmpty()) {
-      if (!deleteFirstEntry()) {
-	return false;
-      }
-    }
-    uint8_t ret = fat_delete_file(SDCard.fs, &dir_entry);
-    if (ret) {
-      exists = false;
-    }
-    return ret;
-  }
-}
-
-bool SDCardEntry::isEmpty() {
-  if (!isDirectory()) {
-    return false;
-  }
-
-  fat_dir_struct *dd = fat_open_dir(SDCard.fs, &dir_entry);
-  if (dd == NULL)
-    return -1;
-
-  uint8_t cnt = 0;
-  struct fat_dir_entry_struct entry;
-  uint8_t ret;
-  while ((ret = fat_read_dir(dd, &entry))) {
-    if (!strcmp(entry.long_name, ".") ||
-	!strcmp(entry.long_name, "..")) {
-      continue;
-    } else {
-      cnt++;
-      break;
-    }
-  }
-  fat_close_dir(dd);
-  return (cnt == 0);
-}
-
-/******************* SD CARD *****************************/
-
-bool SDCardFile::open(bool create) {
-  if (!exists) {
-    if (create) {
-      SDCardEntry parentDir(dir);
-      if (!parentDir.exists)
-	return false;
-      
-      fat_dir_struct *dd = fat_open_dir(SDCard.fs, &parentDir.dir_entry);
-      if (!fat_create_file(dd, name, &dir_entry)
-	  && strcmp(name, dir_entry.long_name)) {
-	fat_close_dir(dd);
-	return false;
-      }
-      fat_close_dir(dd);
-    } else {
-      return false;
-    }
-  }
-  
-  fd = fat_open_file(SDCard.fs, &dir_entry);
+  fd = fat_open_file(SDCard.fs, &file_dir_entry);
   if (fd != NULL)
     return true;
   else
     return false;
+}
+
+bool SDCardFile::create(char *path) {
+  if (SDCard.current_dir == NULL)
+    return false;
+
+  close();
+
+  char *pos = strrchr(path, '/');
+  if (pos != NULL) {
+    int len = pos - path;
+    char subPath[len+1];
+    memcpy(subPath, path, len);
+    subPath[len] = 0;
+    SDCard.createDirectory(subPath);
+    path = pos + 1;
+  }
+  
+  if (!fat_create_file(SDCard.current_dir, path, &file_dir_entry) && strcmp(path, file_dir_entry.long_name))
+    return false;
+
+  fd = fat_open_file(SDCard.fs, &file_dir_entry);
+  if (!fd) {
+    return false;
+  } else {
+    return true;
+  }
 }
 
 void SDCardFile::close() {
@@ -373,7 +262,7 @@ intptr_t SDCardFile::read(uint8_t *buf, uint8_t len) {
   return fat_read_file(fd, buf, len);
 }
 
-intptr_t SDCardFile::write(const uint8_t *buf, uint8_t len) {
+intptr_t SDCardFile::write(uint8_t *buf, uint8_t len) {
   if (fd == NULL)
     return -1;
 
@@ -390,18 +279,5 @@ bool SDCardFile::seek(int32_t *offset, uint8_t whence) {
     return false;
 }
 
-int SDCardFile::readFile(uint8_t *buf, uint8_t len) {
-  if (!open())
-    return -1;
-  intptr_t ret = read(buf, len);
-  close();
-  return ret;
-}
 
-int SDCardFile::writeFile(const uint8_t *buf, uint8_t len) {
-  if (!open(true))
-    return -1;
-  intptr_t ret = write(buf, len);
-  close();
-  return ret;
-}
+SDCardClass SDCard;

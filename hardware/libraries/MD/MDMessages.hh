@@ -5,11 +5,15 @@
 
 extern uint8_t machinedrum_sysex_hdr[5];
 
+uint16_t to16Bit(uint8_t b1, uint8_t b2);
+uint32_t to32Bit(uint8_t *b);
+void from16Bit(uint16_t num, uint8_t *b);
+void from32Bit(uint32_t num, uint8_t *b);
+
 class MDGlobal {
 public:
   uint8_t origPosition;
   uint8_t drumRouting[16];
-  int8_t drumMapping[16];
   uint8_t baseChannel;
   uint16_t tempo;
   bool extendedMode;

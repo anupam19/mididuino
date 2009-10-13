@@ -6,13 +6,13 @@
 class MDPattern {
 public:
   uint8_t origPosition;
-  uint64_t trigPatterns[16];
-  uint64_t lockPatterns[16];
+  uint32_t trigPatterns[16];
+  uint32_t lockPatterns[16];
 
-  uint64_t accentPattern;
-  uint64_t slidePattern;
-  uint64_t swingPattern;
-  uint64_t swingAmount;
+  uint32_t accentPattern;
+  uint32_t slidePattern;
+  uint32_t swingPattern;
+  uint32_t swingAmount;
   uint8_t accentAmount;
   uint8_t patternLength;
 
@@ -21,36 +21,27 @@ public:
 
   uint8_t kit;
   uint8_t numLockedRows; // unused
-  uint8_t locks[64][64];
+  uint8_t locks[64][32];
 
   bool accentEditAll;
   bool slideEditAll;
   bool swingEditAll;
-  uint64_t accentPatterns[16];
-  uint64_t slidePatterns[16];
-  uint64_t swingPatterns[16];
+  uint32_t accentPatterns[16];
+  uint32_t slidePatterns[16];
+  uint32_t swingPatterns[16];
 
   uint8_t numRows;
   int8_t paramLocks[16][24];
   int8_t lockTracks[64];
   int8_t lockParams[64];
 
-  bool isExtraPattern;
-
-  MDPattern() {
-    isExtraPattern = false;
-  }
-
   /* XXX TODO extra pattern 64 */
-
-  void init();
   
   bool fromSysex(uint8_t *sysex, uint16_t len);
   uint16_t toSysex(uint8_t *sysex, uint16_t len);
 
   bool isLockPatternEmpty(uint8_t idx);
-  bool isLockPatternEmpty(uint8_t idx, uint64_t trigs);
-  bool isParamLocked(uint8_t track, uint8_t param);
+  bool isLockPatternEmpty(uint8_t idx, uint32_t trigs);
   void clearLockPattern(uint8_t lock);
   void cleanupLocks();
 

@@ -153,6 +153,7 @@ public class Preferences {
 
     // start by loading the defaults, in case something
     // important was deleted from the user prefs
+
     try {
       load(Base.getStream("preferences.txt"));
 
@@ -187,10 +188,8 @@ public class Preferences {
     // next load user preferences file
 
     preferencesFile = Base.getSettingsFile(PREFS_FILE);
-	  System.out.println("preffile " + preferencesFile);
 
     if (!preferencesFile.exists()) {
-		System.out.println("not exist");
       // create a new preferences file if none exists
       // saves the defaults out to the file
       save();
@@ -210,7 +209,18 @@ public class Preferences {
       }
     }
     
-	  initBoards();
+    try {
+      load(new FileInputStream(new File(
+        System.getProperty("user.dir") +
+        File.separator + "hardware" +
+        File.separator + "boards.txt")),
+        "boards");
+    } catch (Exception ex) {
+        Base.showError("Error reading board definitions",
+                       "Error reading the board definitions file. " +
+                       "Please re-download or re-unzip Arduino.\n", ex);
+    }
+    
     try {
       load(new FileInputStream(new File(
         System.getProperty("user.dir") +
@@ -223,21 +233,6 @@ public class Preferences {
                        "Please re-download or re-unzip Arduino.\n", ex);
     }
   }
-	
-	public static void initBoards() {
-		try {
-			load(new FileInputStream(new File(
-											  System.getProperty("user.dir") +
-											  File.separator + "hardware" +
-											  File.separator + "boards.txt")),
-				 "boards");
-		} catch (Exception ex) {
-			Base.showError("Error reading board definitions",
-						   "Error reading the board definitions file. " +
-						   "Please re-download or re-unzip Arduino.\n", ex);
-		}
-		
-	}		
 
 
   public Preferences() {

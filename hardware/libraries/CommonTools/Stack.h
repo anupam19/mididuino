@@ -3,7 +3,6 @@
 
 #include <WProgram.h>
 #include <inttypes.h>
-#include "helpers.h"
 
 // running stack
 
@@ -16,9 +15,8 @@ class Stack {
   Stack();
   bool push(T *t);
   bool push(T t);
-  bool pop(T *t = NULL);
+  bool pop(T *t);
   bool peek(T *t);
-  bool peekAt(T *t, uint8_t idx);
   bool isEmpty();
   bool isFull();
   void reset();
@@ -29,7 +27,6 @@ class Stack {
 #define STACK_DEC(x) (uint8_t)(((x) == 0) ? (N - 1) : (x) - 1)
 #define STACK_START() (uint8_t)((wr  + start) % N)
 #define STACK_LAST() (uint8_t)((STACK_DEC(wr)  + start) % N)
-#define STACK_AT(x) (uint8_t)((STACK_DEC(wr) + start - x) % N)
 
 template <class T, int N>
 Stack<T,N>::Stack() {
@@ -39,25 +36,22 @@ Stack<T,N>::Stack() {
 
 template <class T, int N>
 void Stack<T,N>::reset() {
-  //  uint8_t tmp = SREG;
-  //  cli();
+  uint8_t tmp = SREG;
+  cli();
   wr = start = 0;
-  //  SREG = tmp;
+  SREG = tmp;
 }
 
 template <class T, int N>
 bool Stack<T,N>::push(T *t) {
-  //  uint8_t tmp = SREG;
-  //  cli();
-  
+  uint8_t tmp = SREG;
+  cli();
   if (isFull()) {
     start = STACK_INC(start);
   }
   m_memcpy(&buf[STACK_START()], t, sizeof(T));
   wr = STACK_INC(wr);
-
-  //  SREG = tmp;
-
+  SREG = tmp;
   return true;
 }
 
@@ -68,88 +62,57 @@ bool Stack<T,N>::push(T t) {
 
 template <class T, int N>
 bool Stack<T,N>::pop(T *t) {
-  //  uint8_t tmp = SREG;
-  //  cli();
-  
+  uint8_t tmp = SREG;
+  cli();
   bool ret = peek(t);
-  if (ret) {
+  if (ret)
     wr = STACK_DEC(wr);
-  }
-
-  // SREG = tmp;
-  
+  SREG = tmp;
   return ret;
 }
 
 template <class T, int N>
 bool Stack<T,N>::peek(T *t) {
-  //  uint8_t tmp = SREG;
-  //  cli();
-  
+  uint8_t tmp = SREG;
+  cli();
   if (isEmpty()) {
-    //    SREG = tmp;
-    
+    SREG = tmp;
     return false;
   }
-  if (t != NULL) {
-    m_memcpy(t, &buf[STACK_LAST()], sizeof(T));
-  }
-
-  //  SREG = tmp;
-
-  return true;
-}
-
-template <class T, int N>
-  bool Stack<T,N>::peekAt(T *t, uint8_t idx) {
-  if (size() <= idx) {
-    return false;
-  }
-  if (t != NULL) {
-    m_memcpy(t, &buf[STACK_AT(idx)], sizeof(T));
-  }
-
+  m_memcpy(t, &buf[STACK_LAST()], sizeof(T));
+  SREG = tmp;
   return true;
 }
 
 template <class T, int N>
 bool Stack<T,N>::isEmpty() {
-  //  uint8_t tmp = SREG;
-  //  cli();
-
+  uint8_t tmp = SREG;
+  cli();
   bool ret = (wr == start);
-
-  //  SREG = tmp;
-
+  SREG = tmp;
   return ret;
 }
 
 template <class T, int N>
 uint8_t Stack<T, N>::size() {
-  //  uint8_t tmp = SREG;
-  //  cli();
-
+  uint8_t tmp = SREG;
+  cli();
   uint8_t ret = 0;
   if (start > wr) {
     ret = N - start + wr;
   } else {
     ret = wr - start;
   }
-
-  //  SREG = tmp;
-
+  SREG = tmp;
   return ret;
 }
 
 template <class T, int N>
 bool Stack<T,N>::isFull() {
-  //  uint8_t tmp = SREG;
-  //  cli();
-  
+  uint8_t tmp = SREG;
+  cli();
   bool ret = (size() == (N - 1));
-
-  // SREG = tmp;
-  
+  SREG = tmp;
   return ret;
 }
 

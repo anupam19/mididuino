@@ -216,10 +216,10 @@ void midiMainLoop(void) {
   }
 
   for (; !exitMainLoop; ) {
-    Sleep(10);
+    Sleep(1);
     //    printf("count: %d\n", sleepCount);
     sleepCount++;
-    if (sleepCount > 2000) {
+    if (sleepCount > 200) {
       printf("timeout\n");
       break;
     }

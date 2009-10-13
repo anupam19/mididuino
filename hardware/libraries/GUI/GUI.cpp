@@ -1,11 +1,7 @@
 #include "WProgram.h"
 #include "GUI.h"
 
-#if defined(MIDIDUINO_USE_GUI) || defined(HOST_MIDIDUINO)
-
-extern CRingBuffer<gui_event_t, 8, uint8_t> EventRB;
-
-Sketch _defaultSketch((char *)"DFT");
+#ifdef MIDIDUINO_USE_GUI
 
 /************************************************/
 GuiClass::GuiClass() {
@@ -16,121 +12,37 @@ GuiClass::GuiClass() {
   }
   lines[0].changed = false;
   lines[1].changed = false;
-  setSketch(&_defaultSketch);
+  handleButtons = NULL;
+  page = NULL;
 }
 
-void GuiClass::setSketch(Sketch *_sketch) {
-  if (sketch !=NULL) {
-    sketch->hide();
-  }
-  sketch = _sketch;
-  if (sketch !=NULL) {
-    sketch->show();
-  }
-  if (currentPage() != NULL)
-    currentPage()->redisplayPage();
-}  
-
-void GuiClass::setPage(Page *page) {
-  if (sketch != NULL)
-    sketch->setPage(page);
-}
-
-void GuiClass::pushPage(Page *page) {
-  if (sketch != NULL)
-    sketch->pushPage(page);
-}
-
-void GuiClass::popPage(Page *page) {
-  if (sketch != NULL)
-    sketch->popPage(page);
-}
-
-void GuiClass::popPage() {
-  if (sketch != NULL)
-    sketch->popPage();
-}
-
-Page *GuiClass::currentPage() {
-  if (sketch != NULL)
-    return sketch->currentPage();
-  else
-    return NULL;
-}
-
-
-void GuiClass::redisplay() {
-  if (sketch != NULL) {
-    Page *page = sketch->currentPage();
-    if (page != NULL)
-      page->redisplay = true;
+void GuiClass::updatePage() {
+  if (page != NULL) {
+    page->update();
   }
 }
-
-void loop();
-
-void GuiClass::loop() {
-  for (int i = 0; i < tasks.size; i++) {
-    if (tasks.arr[i] != NULL) {
-      tasks.arr[i]->checkTask();
-    }
+void GuiClass::update() {
+  bool redisplay = false;
+  
+  uint8_t tmp = SREG;
+  cli();
+  if (newPage != NULL) {
+    page = newPage;
+    newPage = NULL;
+    redisplay = true;
+    setLine(GUI.LINE1);
+    clearLine();
+    setLine(GUI.LINE2 );
+    clearLine();
+  }
+  SREG = tmp;
+  if (page != NULL) {
+    page->display(redisplay);
+    page->handle();
   }
 
-  while (!EventRB.isEmpty()) {
-    gui_event_t event;
-    EventRB.getp(&event);
-    for (int i = 0; i < eventHandlers.size; i++) {
-      if (eventHandlers.arr[i] != NULL) {
-	bool ret = eventHandlers.arr[i](&event);
-	if (ret) {
-	  goto next;
-	}
-      }
-    }
-
-    if (sketch != NULL) {
-      bool ret = sketch->handleTopEvent(&event);
-      if (ret)
-	continue;
-    }
-
-  }
-
- next:
-  if (sketch != NULL) {
-    Page *page = sketch->currentPage();
-    if (page != NULL) {
-      page->update();
-      page->loop();
-    }
-  }
-
-  if (sketch != NULL) {
-    sketch->loop();
-  }
-#ifndef HOST_MIDIDUINO
-  ::loop();
-#endif
-
-  display();
-
-  if (sketch != NULL) {
-    Page *page = sketch->currentPage();
-    if (page != NULL) {
-      page->finalize();
-    }
-  }
-}
-
-void GuiClass::display() {
-  if (sketch != NULL) {
-    Page *page = sketch->currentPage();
-    if (page != NULL) {
-      page->display();
-      page->redisplay = false;
-    }
-  }
-
+  //  uint8_t tmp = SREG;
+  //  cli();
   for (uint8_t i = 0; i < 2; i++) {
     if (lines[i].flashActive) {
       uint16_t clock = read_slowclock();
@@ -140,40 +52,19 @@ void GuiClass::display() {
 	lines[i].flashActive = false;
       }
       if (lines[i].flashChanged) {
-	for (int j = 0; j < 16; j++) {
-	  if (lines[i].flash[j] == 0) {
-	    lines[i].flash[j] = ' ';
-	  }
-	}
-#ifdef HOST_MIDIDUINO
-	printf("%s\n", lines[i].flash);
-#else
 	LCD.goLine(i);
 	LCD.puts(lines[i].flash);
-#endif
 	lines[i].flashChanged = false;
       }
     }
 
     if (lines[i].changed && !lines[i].flashActive) {
-      for (int j = 0; j < 16; j++) {
-	if (lines[i].data[j] == 0) {
-	  lines[i].data[j] = ' ';
-	}
-      }
-#ifdef HOST_MIDIDUINO
-	printf("%s\n", lines[i].data);
-#else
       LCD.goLine(i);
       LCD.puts(lines[i].data);
-#endif
       lines[i].changed = false;
     }
   }
-  GUI.setLine(GUI.LINE1);
-  GUI.clearFlashLine();
-  GUI.setLine(GUI.LINE2);
-  GUI.clearFlashLine();
+  //  SREG = tmp;
 }
 
 char hex2c(uint8_t hex) {
@@ -235,25 +126,15 @@ void GuiClass::put_valuex_at(uint8_t idx, uint8_t value) {
 }
 
 
-void GuiClass::put_string(uint8_t idx, const char *str) {
+void GuiClass::put_string(uint8_t idx, char *str) {
   put_string_at(idx << 2, str);
 }
-
-void GuiClass::put_string_fill(uint8_t idx, const char *str) {
-  put_string_at_fill(idx << 2, str);
-}
-
 
 void GuiClass::put_p_string(uint8_t idx, PGM_P str) {
   put_p_string_at(idx << 2, str);
 }
 
-void GuiClass::put_p_string_fill(uint8_t idx, PGM_P str) {
-  put_p_string_at_fill(idx << 2, str);
-}
-
-
-void GuiClass::put_string_at(uint8_t idx, const char *str) {
+void GuiClass::put_string_at(uint8_t idx, char *str) {
   char *data = lines[curLine].data;
   m_strncpy(data + idx, str, sizeof(lines[0].data) - idx);
   lines[curLine].changed = true;
@@ -266,7 +147,7 @@ void GuiClass::put_p_string_at(uint8_t idx, PGM_P str) {
 }
 
 
-void GuiClass::put_string_at_fill(uint8_t idx, const char *str) {
+void GuiClass::put_string_at_fill(uint8_t idx, char *str) {
   char *data = lines[curLine].data;
   m_strncpy_fill(data + idx, str, sizeof(lines[0].data) - idx);
   lines[curLine].changed = true;
@@ -279,7 +160,7 @@ void GuiClass::put_p_string_at_fill(uint8_t idx, PGM_P str) {
 }
 
 
-void GuiClass::put_string_fill(const char *str) {
+void GuiClass::put_string_fill(char *str) {
   put_string_at_fill(0, str);
 }
 
@@ -287,12 +168,23 @@ void GuiClass::put_p_string_fill(PGM_P str) {
   put_p_string_at_fill(0, str);
 }
 
-void GuiClass::put_string(const char *str) {
+void GuiClass::put_string(char *str) {
   put_string_at(0, str);
 }
 
 void GuiClass::put_p_string(PGM_P str) {
   put_p_string_at(0, str);
+}
+
+void GuiClass::setPage(Page *_page) {
+  newPage = _page;
+  // XXX needed?
+  /*
+  uint8_t tmp = SREG;
+  cli();
+  Encoders.clearEncoders();
+  SREG = tmp;
+  */
 }
 
 void GuiClass::clearLine() {
@@ -305,11 +197,6 @@ void GuiClass::flash(uint16_t duration) {
   lines[curLine].flashChanged = lines[curLine].flashActive = true;
   lines[curLine].duration = duration;
   lines[curLine].flashTimer = read_slowclock();
-}
-
-void GuiClass::clearFlashLine() {
-  for (uint8_t i = 0; i < sizeof(lines[0].data); i++)
-    lines[curLine].flash[i] = ' ';
 }
 
 void GuiClass::clearFlash(uint16_t duration) {
@@ -355,13 +242,13 @@ void GuiClass::flash_put_valuex_at(uint8_t idx, uint8_t value, uint16_t duration
   flash(duration);
 }
 
-void GuiClass::flash_string_at(uint8_t idx, const char *str, uint16_t duration) {
+void GuiClass::flash_string_at(uint8_t idx, char *str, uint16_t duration) {
   char *data = lines[curLine].flash;
   m_strncpy(data + idx, str, sizeof(lines[0].flash) - idx);
   flash(duration);
 }
 
-void GuiClass::flash_string_at_fill(uint8_t idx, const char *str, uint16_t duration) {
+void GuiClass::flash_string_at_fill(uint8_t idx, char *str, uint16_t duration) {
   char *data = lines[curLine].flash;
   m_strncpy_fill(data + idx, str, sizeof(lines[0].flash) - idx);
   flash(duration);
@@ -379,7 +266,7 @@ void GuiClass::flash_p_string_at_fill(uint8_t idx, PGM_P str, uint16_t duration)
   flash(duration);
 }
 
-void GuiClass::flash_string(const char *str, uint16_t duration) {
+void GuiClass::flash_string(char *str, uint16_t duration) {
   flash_string_at(0, str, duration);
 }
 
@@ -387,7 +274,7 @@ void GuiClass::flash_p_string(PGM_P str, uint16_t duration) {
   flash_p_string_at(0, str, duration);
 }
 
-void GuiClass::flash_string_fill(const char *str, uint16_t duration) {
+void GuiClass::flash_string_fill(char *str, uint16_t duration) {
   flash_string_at_fill(0, str, duration);
 }
 
@@ -395,7 +282,7 @@ void GuiClass::flash_p_string_fill(PGM_P str, uint16_t duration) {
   flash_p_string_at_fill(0, str, duration);
 }
 
-void GuiClass::flash_string_clear(const char *str, uint16_t duration) {
+void GuiClass::flash_string_clear(char *str, uint16_t duration) {
   setLine(LINE1);
   flash_string_fill(str, duration);
   setLine(LINE2);
@@ -403,14 +290,14 @@ void GuiClass::flash_string_clear(const char *str, uint16_t duration) {
 }
 
 
-void GuiClass::flash_p_string_clear(const char *str, uint16_t duration) {
+void GuiClass::flash_p_string_clear(char *str, uint16_t duration) {
   setLine(LINE1);
   flash_p_string_fill(str, duration);
   setLine(LINE2);
   clearFlash(duration);
 }
 
-void GuiClass::flash_strings_fill(const char *str1, const char *str2, uint16_t duration) {
+void GuiClass::flash_strings_fill(char *str1, char *str2, uint16_t duration) {
   setLine(LINE1);
   flash_string_fill(str1, duration);
   setLine(LINE2);

@@ -89,12 +89,9 @@ EncodersClass::EncodersClass() {
 }
 
 void EncodersClass::clearEncoders() {
-  USE_LOCK();
-  SET_LOCK();
   for (uint8_t i = 0; i < GUI_NUM_ENCODERS; i++) {
     ENCODER_NORMAL(i) = ENCODER_BUTTON(i) = 0;
   }
-  CLEAR_LOCK();
 }
 
 void EncodersClass::poll(uint16_t sr) {
@@ -156,8 +153,6 @@ void ButtonsClass::poll(uint8_t but) {
   for (uint8_t i = 0; i < GUI_NUM_BUTTONS; i++) {
     STORE_B_CURRENT(i, IS_BIT_SET8(but_tmp, 0));
 
-    // disable button stuff for now
-    /*
     uint16_t sclock = read_slowclock();
     if (BUTTON_PRESSED(i)) {
       B_PRESS_TIME(i) =  sclock;
@@ -191,7 +186,6 @@ void ButtonsClass::poll(uint8_t but) {
 	SET_B_CLICK(i);
       }
     }
-    */
 
     but_tmp >>= 1;
   }

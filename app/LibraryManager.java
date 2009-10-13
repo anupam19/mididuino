@@ -84,15 +84,6 @@ public class LibraryManager {
     refreshLibraries();
     return Collections.unmodifiableList(libraries);
   }
-	
-	public Library get(String name) {
-		for (int i = 0; i < libraries.size(); i++) {
-			if (name.equals(((Library)libraries.get(i)).getName())) {
-				return (Library)libraries.get(i);
-			}
-		}
-		return null;
-	}
 
   /*
    * Returns a collection of all built library objects
@@ -232,7 +223,7 @@ public class LibraryManager {
     int countBuilt = 0;
     while(libIterator.hasNext()){
       library = (Library)libIterator.next();
-//      System.out.println("Building library \"" + library.getName() + "\"");
+      //System.out.println("Building library \"" + library.getName() + "\"");
       try {
         if(library.build()){
           ++countBuilt;
@@ -264,21 +255,6 @@ public class LibraryManager {
       }
     }
   }
-	
-	public void addLibrary(Vector libraries, Library library) {
-		if (!libraries.contains(library)) {
-			libraries.add(library);
-			System.out.println("Adding library " + library.getName());
-			String depends[] = library.getDepends();
-			for (int bla = 0; bla < depends.length; bla++) {
-				Library dependLibrary = get(depends[bla]);
-				if (!libraries.contains(dependLibrary)) {
-					System.out.println("adding depended on library " + dependLibrary.getName());
-					addLibrary(libraries, dependLibrary);
-				}
-			}
-		}
-	}
 
   /*
    * Add syntax coloring
