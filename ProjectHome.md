@@ -1,0 +1,1 @@
+Arduino hardware core for embedded MIDI programming
